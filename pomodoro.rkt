@@ -1,5 +1,24 @@
 #lang racket/gui
 
+(provide 
+ ; Constants
+ DEFAULT-WORK-TIME
+ DEFAULT-REST-TIME
+ ; Core functions
+ start-timer
+ stop-timer
+ reset-timer
+ toggle-period
+ update-settings
+ ; State queries
+ get-time-display
+ is-work-period?
+ is-running?
+ ; Callbacks
+ register-display-callback
+ register-period-callback
+ register-running-callback)
+
 (require rsound
          ffi/unsafe)
 
@@ -10,45 +29,24 @@
 
 ;; State variables
 (define current-seconds 0)
-(define is-running? #f)
-(define is-work-period? #t)
+(define running? #f)
+(define work-period? #t)
 (define work-minutes DEFAULT-WORK-TIME)
 (define rest-minutes DEFAULT-REST-TIME)
 
-;; Initialize audio
-(define current-sound #f)
+;; Callback registrations
+(define display-callback void)  ; Will update timer display
+(define period-callback void)   ; Will update period button text
+(define running-callback void)  ; Will update start/stop button text
 
-;; Simple beep as fallback if file not found
-(define (play-alarm)
-  (system "afplay bell.aiff"))  ; Changed to use bell.aiff
+;; Register callback functions
+(define (register-display-callback cb) (set! display-callback cb))
+(define (register-period-callback cb) (set! period-callback cb))
+(define (register-running-callback cb) (set! running-callback cb))
 
-;; Main frame
-(define frame 
-  (new frame% 
-       [label "Pomodoro Timer"]
-       [width 400]
-       [height 300]))
-
-;; Timer display
-(define timer-display
-  (new message% 
-       [parent frame]
-       [label "25:00"]
-       [font (make-object font% 32 'default)]))
-
-;; Work time input
-(define work-input
-  (new text-field% 
-       [parent frame]
-       [label "Work time (minutes):"]
-       [init-value (number->string DEFAULT-WORK-TIME)]))
-
-;; Rest time input
-(define rest-input
-  (new text-field% 
-       [parent frame]
-       [label "Rest time (minutes):"]
-       [init-value (number->string DEFAULT-REST-TIME)]))
+;; State queries
+(define (is-running?) running?)
+(define (is-work-period?) work-period?)
 
 ;; Helper functions
 (define (format-time seconds)
@@ -60,67 +58,47 @@
                 (format "0~a" secs) 
                 secs))))
 
+(define (get-time-display)
+  (format-time current-seconds))
+
+;; Core functions
 (define (reset-timer)
   (set! current-seconds 
-        (* (if is-work-period? work-minutes rest-minutes) 60))
-  (send timer-display set-label (format-time current-seconds)))
+        (* (if work-period? work-minutes rest-minutes) 60))
+  (display-callback (get-time-display)))
 
-;; Button callbacks
-(define (start-stop-timer)
-  (set! is-running? (not is-running?))
-  (send start-button set-label (if is-running? "Stop" "Start"))
-  (when is-running?
-    (reset-timer)))
+(define (start-timer)
+  (set! running? #t)
+  (running-callback #t)
+  (reset-timer))
+
+(define (stop-timer)
+  (set! running? #f)
+  (running-callback #f))
 
 (define (toggle-period)
-  (set! is-work-period? (not is-work-period?))
+  (set! work-period? (not work-period?))
   (reset-timer)
-  (send period-button set-label 
-        (if is-work-period? "Switch to Rest" "Switch to Work")))
+  (period-callback work-period?))
+
+(define (update-settings new-work-minutes new-break-minutes)
+  (set! work-minutes new-work-minutes)
+  (set! rest-minutes new-break-minutes)
+  (reset-timer))
 
 ;; Timer callback
 (define (timer-callback)
-  (when is-running?
+  (when running?
     (set! current-seconds (sub1 current-seconds))
-    (send timer-display set-label (format-time current-seconds))
+    (display-callback (get-time-display))
     (when (zero? current-seconds)
       (play-alarm)
-      (set! is-running? #f)
-      (send start-button set-label "Start")
+      (stop-timer)
       (toggle-period))))
 
-;; Create buttons
-(define button-panel (new horizontal-panel% [parent frame]))
-
-(define start-button
-  (new button% 
-       [parent button-panel]
-       [label "Start"]
-       [callback (lambda (button event) (start-stop-timer))]))
-
-(define period-button
-  (new button% 
-       [parent button-panel]
-       [label "Switch to Rest"]
-       [callback (lambda (button event) (toggle-period))]))
-
-(define reset-button
-  (new button% 
-       [parent button-panel]
-       [label "Reset"]
-       [callback (lambda (button event) (reset-timer))]))
-
-;; Apply button
-(define apply-button
-  (new button% 
-       [parent frame]
-       [label "Apply Settings"]
-       [callback (lambda (button event)
-                  (set! work-minutes 
-                        (string->number (send work-input get-value)))
-                  (set! rest-minutes 
-                        (string->number (send rest-input get-value)))
-                  (reset-timer))]))
+;; Audio
+(define (play-alarm)
+  (system "afplay bell.aiff"))
 
 ;; Timer thread
 (define timer-thread
@@ -130,6 +108,3 @@
        (sleep/yield (/ TICK-INTERVAL 1000.0))
        (timer-callback)
        (loop)))))
-
-;; Show the frame
-(send frame show #t)

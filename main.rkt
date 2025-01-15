@@ -1,9 +1,7 @@
 #lang racket/gui
 
-(require "audio.rkt"
-         "timer.rkt"
-         "gui.rkt")
+(require "gui.rkt")
 
+;; Create and show the main window
 (define frame (create-main-frame))
-(init-timer-thread!)
 (send frame show #t) 
