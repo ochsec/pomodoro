@@ -11,16 +11,43 @@
 (define start-button #f)
 (define period-button #f)
 
+;; Style constants
+(define BACKGROUND-COLOR (make-object color% 40 40 40))
+(define TEXT-COLOR (make-object color% 255 255 255))
+(define BUTTON-COLOR (make-object color% 80 80 80))
+(define TIMER-FONT (make-object font% 48 'default 'normal 'normal))
+(define INPUT-FONT (make-object font% 14 'default))
+
 (define (create-main-frame)
   (define frame 
     (new frame% 
          [label "Pomodoro Timer"]
          [width 400]
-         [height 300]))
+         [height 300]
+         [style '(no-resize-border)]))
   
-  (create-timer-display frame)
-  (create-input-fields frame)
-  (create-buttons frame)
+  ;; Create a canvas for the background
+  (define bg-canvas
+    (new canvas% 
+         [parent frame]
+         [style '(border)]
+         [paint-callback
+          (lambda (canvas dc)
+            (let ([width (send canvas get-width)]
+                  [height (send canvas get-height)])
+              (send dc set-background BACKGROUND-COLOR)
+              (send dc clear)))]))
+  
+  ;; Main container
+  (define main-panel 
+    (new vertical-panel% 
+         [parent frame]
+         [alignment '(center center)]
+         [spacing 20]))
+  
+  (create-timer-display main-panel)
+  (create-input-fields main-panel)
+  (create-buttons main-panel)
   
   ;; Register callbacks
   (register-display-callback
@@ -39,28 +66,44 @@
   
   frame)
 
-(define (create-timer-display frame)
-  (define timer-panel (new vertical-panel% [parent frame]))
+(define (create-timer-display parent)
+  (define timer-panel 
+    (new vertical-panel% 
+         [parent parent]
+         [alignment '(center center)]
+         [min-height 120]))
+  
   (set! timer-display
         (new message% 
              [parent timer-panel]
              [label "25:00"]
-             [font (make-object font% 32 'default)])))
+             [font TIMER-FONT]
+             [color TEXT-COLOR]))
+  timer-panel)
 
-(define (create-input-fields frame)
-  (define input-panel (new horizontal-panel% [parent frame]))
+(define (create-input-fields parent)
+  (define input-panel 
+    (new horizontal-panel% 
+         [parent parent]
+         [alignment '(center center)]
+         [spacing 10]))
+  
   (set! work-input
         (new text-field% 
              [parent input-panel]
              [label "Work Time (minutes)"]
-             [init-value (number->string DEFAULT-WORK-TIME)]))
+             [init-value (number->string DEFAULT-WORK-TIME)]
+             [min-width 40]
+             [font INPUT-FONT]))
+  
   (set! break-input
         (new text-field%
              [parent input-panel]
              [label "Break Time (minutes)"]
-             [init-value (number->string DEFAULT-REST-TIME)]))
+             [init-value (number->string DEFAULT-REST-TIME)]
+             [min-width 40]
+             [font INPUT-FONT]))
   
-  ;; Add Apply Settings button
   (new button%
        [parent input-panel]
        [label "Apply"]
@@ -69,28 +112,37 @@
                    (string->number (send work-input get-value))
                    (string->number (send break-input get-value))))]))
 
-(define (create-buttons frame)
-  (define button-panel (new horizontal-panel% [parent frame]))
+(define (create-custom-button parent label callback)
+  (new button% 
+       [parent parent]
+       [label label]
+       [callback callback]
+       [min-width 120]))
+
+(define (create-buttons parent)
+  (define button-panel 
+    (new horizontal-panel% 
+         [parent parent]
+         [alignment '(center center)]
+         [spacing 10]))
+  
   (set! start-button
-        (new button% 
-             [parent button-panel]
-             [label "Start"]
-             [callback (lambda (button event)
-                        (if (is-running?)
-                            (stop-timer)
-                            (start-timer)))]))
+        (create-custom-button 
+         button-panel "Start"
+         (lambda (button event)
+           (if (is-running?)
+               (stop-timer)
+               (start-timer)))))
   
   (set! period-button
-        (new button%
-             [parent button-panel]
-             [label "Switch to Rest"]
-             [callback (lambda (button event)
-                        (toggle-period))]))
+        (create-custom-button 
+         button-panel "Switch to Rest"
+         (lambda (button event)
+           (toggle-period))))
   
-  (new button%
-       [parent button-panel]
-       [label "Reset"]
-       [callback (lambda (button event)
-                  (reset-timer))]))
+  (create-custom-button 
+   button-panel "Reset"
+   (lambda (button event)
+     (reset-timer))))
 
 ;; ... rest of GUI-related functions ... 
